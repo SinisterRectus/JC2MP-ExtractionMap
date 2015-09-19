@@ -5,53 +5,67 @@ class 'Map'
 function Map:__init()
 	
 	self.players = {}
+	self.viewers = {}
 	
-	Network:Subscribe("InitialTeleport", self, self.InitialTeleport)
-	Network:Subscribe("CorrectedTeleport", self, self.CorrectedTeleport)
-	Network:Subscribe("RequestUpdate", self, self.OnRequestUpdate)
+	self.timer = Timer()
+	self.delay = 1000
 	
-	Events:Subscribe("ModuleLoad", self, self.OnModuleLoad)
+	Network:Subscribe("InitialTeleport", self, self.Teleport)
+	Network:Subscribe("CorrectedTeleport", self, self.Teleport)
+	Network:Subscribe("MapShown", self, self.AddViewer)
+	Network:Subscribe("MapHidden", self, self.RemoveViewer)
+	
+	Events:Subscribe("PreTick", self, self.BroadcastUpdate)
+	Events:Subscribe("ModuleLoad", self, self.ModuleLoad)
 	Events:Subscribe("PlayerSpawn", self, self.AddPlayer)
 	Events:Subscribe("PlayerDeath", self, self.RemovePlayer)
 	Events:Subscribe("PlayerQuit", self, self.RemovePlayer)
 
 end
 
-function Map:InitialTeleport(args, sender)
+function Map:Teleport(args, sender)
 
-	sender:SetPosition(Vector3(args.position.x, math.max(args.position.y + 5, 200), args.position.z))
+	sender:SetPosition(Vector3(args.position.x, math.max(args.position.y, 200), args.position.z))
 	
 end
 
-function Map:CorrectedTeleport(args, sender)
+function Map:AddViewer(_, sender)
 
-	sender:SetPosition(Vector3(args.position.x, math.max(args.position.y, 200), args.position.z))
+	self.viewers[sender:GetId()] = sender
 
 end
 
-function Map:OnRequestUpdate(args, sender)
+function Map:RemoveViewer(_, sender)
+
+	self.viewers[sender:GetId()] = nil
+
+end
+
+function Map:BroadcastUpdate()
+
+	if self.timer:GetMilliseconds() < self.delay then return end
+	if table.count(self.viewers) == 0 then return end
+	
+	self.timer:Restart()
 
 	local send_args = {}
 	
-	for id in pairs(self.players) do
+	for _, player in pairs(self.players) do
 	
-		local player = Player.GetById(id)
-	
-		if player ~= sender then
+		if IsValid(player) then
 		
 			local data = {}
 		
+			data.id = player:GetId()
 			data.name = player:GetName()
-			data.position = player:GetPosition()
-			data.color = player:GetColor()
+			data.pos = player:GetPosition()
+			data.col = player:GetColor()
 			
-			if player:InVehicle() then
-				local vehicle = player:GetVehicle()
-				if player == vehicle:GetDriver() then
-					data.vehicle_name = vehicle:GetName()
-					data.velocity = vehicle:GetLinearVelocity()
-					data.angle = vehicle:GetAngle()
-				end
+			local vehicle = player:GetVehicle()
+			if IsValid(vehicle) and vehicle:GetDriver() == player then
+				data.veh = vehicle:GetName()
+				data.vel = vehicle:GetLinearVelocity()
+				data.ang = vehicle:GetAngle()
 			end
 				
 			table.insert(send_args, data)
@@ -60,23 +74,21 @@ function Map:OnRequestUpdate(args, sender)
 		
 	end
 	
-	Network:Send(sender, "PlayerUpdate", send_args)
+	Network:SendToPlayers(self.viewers, "PlayerUpdate", send_args)
 	
 end
 
-function Map:OnModuleLoad()
+function Map:ModuleLoad()
 
 	for player in Server:GetPlayers() do
-	
-		self.players[player:GetId()] = true
-		
+		self.players[player:GetId()] = player
 	end
 
 end
 
 function Map:AddPlayer(args)
 
-	self.players[args.player:GetId()] = true
+	self.players[args.player:GetId()] = args.player
 
 end
 
