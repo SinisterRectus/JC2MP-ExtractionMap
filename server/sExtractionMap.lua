@@ -12,14 +12,14 @@ function Map:__init()
 	
 	Network:Subscribe("InitialTeleport", self, self.Teleport)
 	Network:Subscribe("CorrectedTeleport", self, self.Teleport)
-	Network:Subscribe("MapShown", self, self.AddViewer)
-	Network:Subscribe("MapHidden", self, self.RemoveViewer)
+	Network:Subscribe("MapShown", self, self.MapShown)
+	Network:Subscribe("MapHidden", self, self.MapHidden)
 	
 	Events:Subscribe("PreTick", self, self.BroadcastUpdate)
 	Events:Subscribe("ModuleLoad", self, self.ModuleLoad)
-	Events:Subscribe("PlayerSpawn", self, self.AddPlayer)
-	Events:Subscribe("PlayerDeath", self, self.RemovePlayer)
-	Events:Subscribe("PlayerQuit", self, self.RemovePlayer)
+	Events:Subscribe("PlayerSpawn", self, self.PlayerSpawn)
+	Events:Subscribe("PlayerDeath", self, self.PlayerDeath)
+	Events:Subscribe("PlayerQuit", self, self.PlayerQuit)
 
 end
 
@@ -29,24 +29,73 @@ function Map:Teleport(args, sender)
 	
 end
 
-function Map:AddViewer(_, sender)
+function Map:MapShown(_, sender)
 
-	self.viewers[sender:GetId()] = sender
+	self:AddViewer(sender)
 
 end
 
-function Map:RemoveViewer(_, sender)
+function Map:MapHidden(_, sender)
 
-	self.viewers[sender:GetId()] = nil
+	self:RemoveViewer(sender)
 
+end
+
+function Map:AddViewer(viewer)
+
+	self.viewers[viewer:GetId()] = viewer
+
+end
+
+function Map:RemoveViewer(viewer)
+
+	self.viewers[viewer:GetId()] = nil
+
+end
+
+function Map:PlayerSpawn(args)
+
+	self:AddPlayer(args.player)
+
+end
+
+function Map:PlayerDeath(args)
+
+	self:RemovePlayer(args.player)
+
+end
+
+function Map:PlayerQuit(args)
+
+	self:RemoveViewer(args.player)
+	self:RemovePlayer(args.player)
+
+end
+
+function Map:AddPlayer(player)
+
+	self.players[player:GetId()] = player
+
+end
+
+function Map:RemovePlayer(player)
+
+	self.players[player:GetId()] = nil
+	
 end
 
 function Map:BroadcastUpdate()
 
 	if self.timer:GetMilliseconds() < self.delay then return end
-	if table.count(self.viewers) == 0 then return end
-	
 	self.timer:Restart()
+	
+	local is_viewed
+	for	_, viewer in pairs(self.viewers) do
+		is_viewed = true
+		break
+	end
+	
+	if not is_viewed then return end
 
 	local send_args = {}
 	
@@ -84,18 +133,6 @@ function Map:ModuleLoad()
 		self.players[player:GetId()] = player
 	end
 
-end
-
-function Map:AddPlayer(args)
-
-	self.players[args.player:GetId()] = args.player
-
-end
-
-function Map:RemovePlayer(args)
-
-	self.players[args.player:GetId()] = nil
-	
 end
 
 Map = Map()
